@@ -10,4 +10,4 @@ monitor: upload
 	arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200 --fqbn espressif:esp32:adafruit_itsybitsy_esp32
 
 sync:
-	rsync -avzP SteakWSL:/home/dskel/repos/embedded/ .
+	rsync -avzP --exclude="target" SteakWSL:/home/dskel/repos/embedded/ ~/Documents/Code/embedded/ >> sync-embedded.log 2>&1
