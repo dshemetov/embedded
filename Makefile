@@ -1,13 +1,20 @@
 .PHONY: sync compile upload monitor
+DEVICE=/dev/cu.usbserial-59190089461
+BOARD=esp32:esp32:adafruit_itsybitsy_esp32
+UPLOAD_BAUDRATE=460800
+SERIAL_BAUDRATE=115200
+PROJECT=ps1-spi
+# empty or -v
+VERBOSE=
 
 compile:
-	arduino-cli compile -b espressif:esp32:adafruit_itsybitsy_esp32 ps1-spi
+	arduino-cli compile -b $(BOARD) $(VERBOSE) $(PROJECT)
 
-upload: compile
-	arduino-cli upload -p /dev/ttyACM0 --fqbn espressif:esp32:adafruit_itsybitsy_esp32 -F upload.speed=115200 ps1-spi
+upload:
+	arduino-cli upload -p $(DEVICE) --fqbn $(BOARD) --upload-field upload.speed=$(UPLOAD_BAUDRATE) --upload-property "upload.speed=$(UPLOAD_BAUDRATE)" $(VERBOSE) $(PROJECT)
 
-monitor: upload
-	arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200 --fqbn espressif:esp32:adafruit_itsybitsy_esp32
+monitor:
+	arduino-cli monitor -p $(DEVICE) -c baudrate=$(SERIAL_BAUDRATE) --fqbn $(BOARD)
 
 sync:
 	rsync -avzP --exclude="target" SteakWSL:/home/dskel/repos/embedded/ ~/Documents/Code/embedded/ >> sync-embedded.log 2>&1
