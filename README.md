@@ -10,10 +10,16 @@ See the [PSX-SPI](psx-spi) directory for the code.
 
 ### Features
 
+- [x] LED shows connected / disconnected mode (NeoPixel)
 - [x] OTA WiFi Updates (via ESP32 Arduino library)
-- [x] LED (NeoPixel)
 - [x] Deep Sleep (ESP32 draws 10mA in deep sleep)
 - [x] Bluetooth bond delete sequence (SELECT + START + L1 + R1)
+- [ ] Latency tested on [Celeste](https://www.celestegame.com)!
+
+### TODO
+
+- [x] Get the Bluetooth to be less aggressive (currently re-pairs immediately
+      after disconnecting).
 - [ ] Wake on R1 press
 - [ ] Connect R1 to GPIO for wake.
 - [ ] Test deep sleep and wake.
@@ -21,8 +27,6 @@ See the [PSX-SPI](psx-spi) directory for the code.
 - [ ] Attach the USB-C port and the battery.
 - [ ] Attach the Arduino.
 - [ ] Angle so LED is exposed.
-- [x] Get the Bluetooth to be less aggressive (currently re-pairs immediately
-      after disconnecting).
 - [ ] Latency testing with a real game.
 
 ### Arduino Pin Connections
