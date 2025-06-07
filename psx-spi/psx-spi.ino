@@ -1,0 +1,265 @@
+// ESP32 Bluetooth PSX Controller
+#include <Adafruit_NeoPixel.h>
+#include <Arduino.h>
+#include <BleGamepad.h>
+#include <SPI.h>
+
+// Feature flags for incremental development.
+#define USE_LED        // NeoPixel LED on pin 0.
+#define USE_DEEP_SLEEP // Deep sleep after no input timeout.
+#define WIFI_UPDATES   // Enable wireless firmware updates.
+
+#ifdef WIFI_UPDATES
+#include "wifi_updates.h"
+#endif
+
+// A0 is tied to ACK, but I don't actually poll it.
+#define ATT 26        // A1, controller select.
+#define SCK 19        // Controller clock.
+#define MISO 22       // Controller data out.
+#define MOSI 21       // Controller data in.
+#define numButtons 16 // Standard 2 byte report.
+#define WAKE_PIN 4    // A2, pin must be RTC GPIO.
+
+// Start SPI at 250kHz.
+SPISettings psx(250000, LSBFIRST, SPI_MODE3);
+// Start BLE and signal 100% battery.
+BleGamepad bleGamepad("PSX BLT", "dskel", 100);
+const char *CLEAR_SCREEN_ANSI = "\e[1;1H\e[2J";
+const int deep_sleep_after = (3 * 60 * 1000); // 3 mins.
+int last_button_press = millis();
+#ifdef USE_LED
+Adafruit_NeoPixel pixel(1, 0, NEO_GRB + NEO_KHZ800);
+#endif
+// Button states.
+bool previousButtonStates[numButtons];
+bool currentButtonStates[numButtons];
+// PSX D-pad bit number.
+#define PSX_LEFT 15
+#define PSX_DOWN 14
+#define PSX_RIGHT 13
+#define PSX_UP 12
+#define PSX_START 11
+#define PSX_SELECT 8
+// Map from PSX button state bits to standard OS interpretation of HID
+// Gamepad button report.
+// Bit number:            15 14 13 12 11 10 9  8  7  6  5  4  3  2  1  0
+// From controller (MSB): L  D  R  U  St R3 L3 Se □  X  O  △  R1 L1 R2 L2
+// Trial and error to find the right button map, use https://gamepadtester.net.
+const byte buttonMap[numButtons] = {7,   // 0 L2
+                                    8,   // 1 R2
+                                    5,   // 2 L1
+                                    6,   // 3 R1
+                                    4,   // 4 △
+                                    2,   // 5 O
+                                    1,   // 6 X
+                                    3,   // 7 □
+                                    9,   // 8 Se
+                                    9,   // 9 L3
+                                    10,  // 10 R3
+                                    10,  // 11 St
+                                    14,  // 12 R
+                                    16,  // 13 L
+                                    15,  // 14 U
+                                    13}; // 15 D
+
+#define BOND_DELETE_TIMEOUT 3000 // 3 seconds
+unsigned long bond_delete_start = 0;
+bool bond_delete_sequence = false;
+
+void setup() {
+    // Initialize serial for debugging.
+    Serial.begin(115200);
+    delay(500);
+
+#ifdef USE_DEEP_SLEEP
+    pinMode(WAKE_PIN, INPUT_PULLUP);                       // Idle HIGH.
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)WAKE_PIN, 0); // Wake LOW.
+#endif
+
+    // Initialize button states to off.
+    for (int i = 0; i < numButtons; i++) {
+        previousButtonStates[i] = false;
+        currentButtonStates[i] = false;
+    }
+    // ATT is always high.
+    pinMode(ATT, OUTPUT);
+    digitalWrite(ATT, HIGH);
+
+    // Initialize SPI.
+    SPI.begin(SCK, MISO, MOSI, ATT);
+
+    // Initialize BLE.
+    Serial.println("Starting BLE work!");
+    BleGamepadConfiguration bleGamepadConfig;
+    // Add start and select as special buttons (depends on device).
+    bleGamepadConfig.setIncludeStart(true);
+    bleGamepadConfig.setIncludeSelect(true);
+    // Disable axes.
+    bleGamepadConfig.setWhichAxes(false, false, false, false, false, false,
+                                  false, false);
+    bleGamepad.begin(&bleGamepadConfig);
+    delay(100);
+
+#ifdef USE_LED
+    pixel.begin();
+    pixel.clear();
+#endif
+
+#ifdef WIFI_UPDATES
+    wifiInit();
+    webServerInit();
+#endif
+}
+
+uint16_t poll_pad() {
+    // PSX poll command and listen high.
+    const uint8_t tx[5] = {0x01, 0x42, 0xff, 0xff, 0xff};
+    uint8_t rx[5];
+
+    digitalWrite(ATT, LOW);
+    SPI.beginTransaction(psx);
+    delayMicroseconds(20);
+    // Expected response: FF ID 5A RX RX.
+    for (int i = 0; i < 5; i++) {
+        rx[i] = SPI.transfer(tx[i]);
+        delayMicroseconds(5); // Ensure we don't just read MOSI back.
+    }
+    SPI.endTransaction();
+
+    digitalWrite(ATT, HIGH);
+    digitalWrite(SCK, HIGH);
+    digitalWrite(MOSI, HIGH);
+    digitalWrite(MISO, HIGH);
+    delayMicroseconds(20);
+
+    if (rx[1] != 0x41 || rx[2] != 0x5A)
+        return 0xffff;            // No pad?
+    return ~(rx[3] << 8 | rx[4]); // Convert to active-high.
+}
+
+void handle_dpad(uint16_t rx) {
+    uint8_t dpadState = DPAD_CENTERED;
+    if (rx & (1 << PSX_UP)) {
+        if (rx & (1 << PSX_RIGHT)) {
+            dpadState = DPAD_UP_RIGHT;
+        } else if (rx & (1 << PSX_LEFT)) {
+            dpadState = DPAD_UP_LEFT;
+        } else {
+            dpadState = DPAD_UP;
+        }
+    } else if (rx & (1 << PSX_DOWN)) {
+        if (rx & (1 << PSX_RIGHT)) {
+            dpadState = DPAD_DOWN_RIGHT;
+        } else if (rx & (1 << PSX_LEFT)) {
+            dpadState = DPAD_DOWN_LEFT;
+        } else {
+            dpadState = DPAD_DOWN;
+        }
+    } else if (rx & (1 << PSX_RIGHT)) {
+        dpadState = DPAD_RIGHT;
+    } else if (rx & (1 << PSX_LEFT)) {
+        dpadState = DPAD_LEFT;
+    }
+    bleGamepad.setHat(dpadState);
+}
+
+void handle_buttons(uint16_t rx, bool &changed) {
+    // Check for bond delete sequence (SELECT + START + L1 + R1)
+    bool select_pressed = rx & (1 << PSX_SELECT);
+    bool start_pressed = rx & (1 << PSX_START);
+    bool l1_pressed = rx & (1 << 2); // L1 is button 2
+    bool r1_pressed = rx & (1 << 3); // R1 is button 3
+
+    if (select_pressed && start_pressed && l1_pressed && r1_pressed) {
+        if (!bond_delete_sequence) {
+            bond_delete_sequence = true;
+            bond_delete_start = millis();
+        } else if (millis() - bond_delete_start > BOND_DELETE_TIMEOUT) {
+            Serial.println("Bond delete sequence detected!");
+            bleGamepad.deleteBond();
+            bond_delete_sequence = false;
+            return; // Skip normal button handling
+        }
+    } else {
+        bond_delete_sequence = false;
+    }
+
+    // Normal button handling
+    for (uint8_t i = 0; i < numButtons; i++) {
+        currentButtonStates[i] = rx & (1 << i);
+        if (currentButtonStates[i] != previousButtonStates[i]) {
+            last_button_press = millis();
+            changed = true;
+
+            if (currentButtonStates[i] == LOW) {
+                bleGamepad.release(buttonMap[i]);
+                if (i == PSX_START) {
+                    bleGamepad.releaseStart();
+                } else if (i == PSX_SELECT) {
+                    bleGamepad.releaseSelect();
+                }
+            } else {
+                bleGamepad.press(buttonMap[i]);
+                if (i == PSX_START) {
+                    bleGamepad.pressStart();
+                } else if (i == PSX_SELECT) {
+                    bleGamepad.pressSelect();
+                }
+            }
+        }
+    }
+}
+
+void loop() {
+    uint16_t rx;
+    bool changed = false;
+
+    if (bleGamepad.isConnected()) {
+#ifdef USE_LED
+        pixel.setPixelColor(0, 0x000033);
+        pixel.show();
+#endif
+
+        rx = poll_pad();
+        handle_dpad(rx);
+        handle_buttons(rx, changed);
+
+        if (changed) {
+            // Log on update.
+            Serial.print(CLEAR_SCREEN_ANSI);
+            // Print raw hex value.
+            Serial.printf("Raw RX: 0x%04X\n", rx);
+            // Print binary representation with bit numbers.
+            Serial.println("Binary: ");
+            for (int i = 15; i >= 0; i--) {
+                Serial.print((rx & (1 << i)) ? "1  " : "0  ");
+            }
+            Serial.println();
+            for (uint8_t j = 0; j < numButtons; j++) {
+                previousButtonStates[j] = currentButtonStates[j];
+            }
+        }
+#ifdef USE_DEEP_SLEEP
+        if (millis() - last_button_press > deep_sleep_after) {
+            delay(300);
+            esp_deep_sleep_start();
+        }
+#endif
+    } else {
+#ifdef USE_LED
+        // Flash LED to indicate disconnected.
+        for (int i = 0; i < 3; i++) {
+            pixel.setPixelColor(0, 0x000033);
+            pixel.show();
+            delay(300);
+            pixel.setPixelColor(0, 0x000000);
+            pixel.show();
+            delay(300);
+        }
+#endif
+    }
+#ifdef WIFI_UPDATES
+    server.handleClient();
+#endif
+}
