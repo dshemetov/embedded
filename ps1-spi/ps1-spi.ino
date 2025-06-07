@@ -32,13 +32,13 @@
 // TODO:
 // * Connect R1 to GPIO for wake.
 // * Test deep sleep and wake.
-// * Get it into the form factor I want. Expose the charging port and the
-//   Arduino port. Solder wires directly to Arduino and remove breadboard.
-//   Attach the USB-C port and the battery.
+// * Solder wires directly to Arduino and remove breadboard.
+// * Attach the USB-C port and the battery.
+// * Attach the Arduino.
+// * Angle so LED is exposed.
 // * Get the Bluetooth to be less aggressive (currently re-pairs immediately
 //   after disconnecting).
 // * More latency testing.
-// * Connecting to start button might be annoying, consider an extra button?
 #include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
 #include <BleGamepad.h>
