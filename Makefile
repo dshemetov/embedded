@@ -3,7 +3,7 @@ DEVICE=/dev/cu.usbserial-59190089461
 BOARD=esp32:esp32:adafruit_itsybitsy_esp32
 UPLOAD_BAUDRATE=460800
 SERIAL_BAUDRATE=115200
-PROJECT=ps1-spi
+PROJECT=psx-spi
 # empty or -v
 VERBOSE=
 

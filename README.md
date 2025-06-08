@@ -29,32 +29,21 @@ See the [PSX-SPI](psx-spi) directory for the code.
 - [ ] Angle so LED is exposed.
 - [ ] Latency testing with a real game.
 
-### Arduino Pin Connections
+### PSX Controller and Arduino Pinout
 
-This is how I wired the PSX controller to the ESP32 board.
+Standard PSX controller pinout, my Arduino pin pairing, and color codings.
 
-| Arduino Pin | PSX Pin |
-| ----------- | ------- |
-| 26          | A1      |
-| 19          | CLK     |
-| 22          | MISO    |
-| 21          | MOSI    |
-
-### Controller Pinout
-
-A reference for standard PSX controller pinout and my color coding.
-
-| Pin | Typical Color | My Color | Function |
-| --- | ------------- | -------- | -------- |
-| 1   | Brown         | Brown    | DATA/RX  |
-| 2   | Orange        | White    | CMD/ATT  |
-| 3   | ---           | ---      | NONE     |
-| 4   | Black         | Orange   | GND      |
-| 5   | Red           | Yellow   | 3.3V     |
-| 6   | Yellow        | Green    | SELECT   |
-| 7   | Blue          | Blue     | CLK      |
-| 8   | ---           | ---      | NONE     |
-| 9   | Green         | Black    | ACK      |
+| Pin | Function | Arduino Pin | My Wire Color | Typical PSX Wire Color |
+| --- | -------- | ----------- | ------------- | ---------------------- |
+| 1   | DATA/RX  | MISO/22     | Brown         | Brown                  |
+| 2   | CMD/ATT  | MOSI/21     | White         | Orange                 |
+| 3   | NONE     | ---         | ---           | ---                    |
+| 4   | GND      | GND         | Orange        | Black                  |
+| 5   | 3.3V     | 3.3V        | Yellow        | Red                    |
+| 6   | SELECT   | A1/10       | Green         | Yellow                 |
+| 7   | CLK      | SCK/19      | Blue          | Blue                   |
+| 8   | NONE     | ---         | ---           | ---                    |
+| 9   | ACK      | A0/25       | Black         | Green                  |
 
 ### Further Notes
 

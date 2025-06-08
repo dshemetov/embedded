@@ -19,15 +19,42 @@
 #define MISO 22       // Controller data out.
 #define MOSI 21       // Controller data in.
 #define numButtons 16 // Standard 2 byte report.
-#define WAKE_PIN 4    // A2, pin must be RTC GPIO.
+#ifdef USE_DEEP_SLEEP
+#define WAKE_PIN 4                            // A2, pin must be RTC GPIO.
+const int deep_sleep_after = (3 * 60 * 1000); // 3 mins.
+int last_button_press = millis();
+void print_wakeup_reason() {
+    esp_sleep_wakeup_cause_t wakeup_reason;
+    wakeup_reason = esp_sleep_get_wakeup_cause();
+    switch (wakeup_reason) {
+    case ESP_SLEEP_WAKEUP_EXT0:
+        Serial.println("Wakeup caused by external signal using RTC_IO");
+        break;
+    case ESP_SLEEP_WAKEUP_EXT1:
+        Serial.println("Wakeup caused by external signal using RTC_CNTL");
+        break;
+    case ESP_SLEEP_WAKEUP_TIMER:
+        Serial.println("Wakeup caused by timer");
+        break;
+    case ESP_SLEEP_WAKEUP_TOUCHPAD:
+        Serial.println("Wakeup caused by touchpad");
+        break;
+    case ESP_SLEEP_WAKEUP_ULP:
+        Serial.println("Wakeup caused by ULP program");
+        break;
+    default:
+        Serial.printf("Wakeup was not caused by deep sleep: %d\n",
+                      wakeup_reason);
+        break;
+    }
+}
+#endif
 
 // Start SPI at 250kHz.
 SPISettings psx(250000, LSBFIRST, SPI_MODE3);
 // Start BLE and signal 100% battery.
 BleGamepad bleGamepad("PSX BLT", "dskel", 100);
 const char *CLEAR_SCREEN_ANSI = "\e[1;1H\e[2J";
-const int deep_sleep_after = (3 * 60 * 1000); // 3 mins.
-int last_button_press = millis();
 #ifdef USE_LED
 Adafruit_NeoPixel pixel(1, 0, NEO_GRB + NEO_KHZ800);
 #endif
@@ -73,6 +100,7 @@ void setup() {
     delay(500);
 
 #ifdef USE_DEEP_SLEEP
+    print_wakeup_reason();
     pinMode(WAKE_PIN, INPUT_PULLUP);                       // Idle HIGH.
     esp_sleep_enable_ext0_wakeup((gpio_num_t)WAKE_PIN, 0); // Wake LOW.
 #endif
@@ -165,7 +193,7 @@ void handle_dpad(uint16_t rx) {
 }
 
 void handle_buttons(uint16_t rx, bool &changed) {
-    // Check for bond delete sequence (SELECT + START + L1 + R1)
+    // Check for Bluetooth bond delete sequence (SELECT + START + L1 + R1).
     bool select_pressed = rx & (1 << PSX_SELECT);
     bool start_pressed = rx & (1 << PSX_START);
     bool l1_pressed = rx & (1 << 2); // L1 is button 2
@@ -177,19 +205,22 @@ void handle_buttons(uint16_t rx, bool &changed) {
             bond_delete_start = millis();
         } else if (millis() - bond_delete_start > BOND_DELETE_TIMEOUT) {
             Serial.println("Bond delete sequence detected!");
-            bleGamepad.deleteBond();
+            bleGamepad.deleteAllBonds();
+            bleGamepad.enterPairingMode();
             bond_delete_sequence = false;
-            return; // Skip normal button handling
+            return; // Skip normal button handling.
         }
     } else {
         bond_delete_sequence = false;
     }
 
-    // Normal button handling
+    // Normal button handling.
     for (uint8_t i = 0; i < numButtons; i++) {
         currentButtonStates[i] = rx & (1 << i);
         if (currentButtonStates[i] != previousButtonStates[i]) {
+#ifdef USE_DEEP_SLEEP
             last_button_press = millis();
+#endif
             changed = true;
 
             if (currentButtonStates[i] == LOW) {
@@ -242,6 +273,7 @@ void loop() {
         }
 #ifdef USE_DEEP_SLEEP
         if (millis() - last_button_press > deep_sleep_after) {
+            Serial.println("Entering deep sleep...");
             delay(300);
             esp_deep_sleep_start();
         }
