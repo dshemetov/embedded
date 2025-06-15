@@ -90,7 +90,7 @@ const byte buttonMap[numButtons] = {7,   // 0 L2
                                     15,  // 14 U
                                     13}; // 15 D
 
-#define BOND_DELETE_TIMEOUT 3000 // 3 seconds
+#define BOND_DELETE_TIMEOUT (3 * 1000) // 3 seconds
 unsigned long bond_delete_start = 0;
 bool bond_delete_sequence = false;
 
@@ -110,11 +110,11 @@ void setup() {
         previousButtonStates[i] = false;
         currentButtonStates[i] = false;
     }
-    // ATT is always high.
+
     pinMode(ATT, OUTPUT);
     digitalWrite(ATT, HIGH);
-
-    // Initialize SPI.
+    // Note: MISO needs to be INPUT_PULLUP to idle high. The default SPI library
+    // sets it to INPUT though, so I had to modify that in esp32-hal-spi.c.
     SPI.begin(SCK, MISO, MOSI, ATT);
 
     // Initialize BLE.
@@ -137,6 +137,7 @@ void setup() {
 #ifdef WIFI_UPDATES
     wifiInit();
     webServerInit();
+    delay(1000);
 #endif
 }
 
@@ -155,10 +156,10 @@ uint16_t poll_pad() {
     }
     SPI.endTransaction();
 
+    // Idle high.
     digitalWrite(ATT, HIGH);
     digitalWrite(SCK, HIGH);
     digitalWrite(MOSI, HIGH);
-    digitalWrite(MISO, HIGH);
     delayMicroseconds(20);
 
     if (rx[1] != 0x41 || rx[2] != 0x5A)
