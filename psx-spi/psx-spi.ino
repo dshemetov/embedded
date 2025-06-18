@@ -85,14 +85,16 @@ const byte buttonMap[numButtons] = {7,   // 0 L2
                                     9,   // 9 L3
                                     10,  // 10 R3
                                     10,  // 11 St
-                                    14,  // 12 R
-                                    16,  // 13 L
-                                    15,  // 14 U
-                                    13}; // 15 D
+                                    13,  // 12 U
+                                    16,  // 13 R
+                                    14,  // 14 D
+                                    15}; // 15 L
 
-#define BOND_DELETE_TIMEOUT (3 * 1000) // 3 seconds
+#define SPECIAL_SEQUENCE_TIMEOUT (3 * 1000) // 3 seconds
 unsigned long bond_delete_start = 0;
 bool bond_delete_sequence = false;
+unsigned long restart_start = 0;
+bool restart_sequence = false;
 
 void setup() {
     // Initialize serial for debugging.
@@ -194,25 +196,39 @@ void handle_dpad(uint16_t rx) {
 }
 
 void handle_buttons(uint16_t rx, bool &changed) {
-    // Check for Bluetooth bond delete sequence (SELECT + START + L1 + R1).
     bool select_pressed = rx & (1 << PSX_SELECT);
     bool start_pressed = rx & (1 << PSX_START);
     bool l1_pressed = rx & (1 << 2); // L1 is button 2
     bool r1_pressed = rx & (1 << 3); // R1 is button 3
+    bool l2_pressed = rx & (1 << 1); // L2 is button 1
+    bool r2_pressed = rx & (1 << 0); // R2 is button 0
 
+    // Check for Bluetooth bond delete sequence (SELECT + START + L1 + R1).
     if (select_pressed && start_pressed && l1_pressed && r1_pressed) {
         if (!bond_delete_sequence) {
             bond_delete_sequence = true;
             bond_delete_start = millis();
-        } else if (millis() - bond_delete_start > BOND_DELETE_TIMEOUT) {
-            Serial.println("Bond delete sequence detected!");
-            bleGamepad.deleteAllBonds();
+        } else if (millis() - bond_delete_start > SPECIAL_SEQUENCE_TIMEOUT) {
+            Serial.println("Entering pairing mode!");
             bleGamepad.enterPairingMode();
             bond_delete_sequence = false;
             return; // Skip normal button handling.
         }
     } else {
         bond_delete_sequence = false;
+    }
+
+    // Check for restart sequence (SELECT + START + L2 + R2).
+    if (select_pressed && start_pressed && l2_pressed && r2_pressed) {
+        if (!restart_sequence) {
+            restart_sequence = true;
+            restart_start = millis();
+        } else if (millis() - restart_start > SPECIAL_SEQUENCE_TIMEOUT) {
+            Serial.println("Restart sequence detected!");
+            esp_restart();
+        }
+    } else {
+        restart_sequence = false;
     }
 
     // Normal button handling.
