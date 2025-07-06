@@ -1,8 +1,8 @@
 // ESP32 Bluetooth PSX Controller
-#include <Adafruit_NeoPixel.h>
 #include <Arduino.h>
-#include <BleGamepad.h>
+#include <Adafruit_NeoPixel.h>
 #include <SPI.h>
+#include <BleGamepad.h>
 
 // Feature flags for incremental development.
 #define USE_LED        // NeoPixel LED on pin 0.
@@ -14,11 +14,10 @@
 #endif
 
 // A0 is tied to ACK, but I don't actually poll it.
-#define ATT 26        // A1, controller select.
-#define SCK 19        // Controller clock.
-#define MISO 22       // Controller data out.
-#define MOSI 21       // Controller data in.
-#define numButtons 16 // Standard 2 byte report.
+#define ATT 26  // A1, controller select.
+#define SCK 19  // Controller clock.
+#define MISO 22 // Controller data out.
+#define MOSI 21 // Controller data in.
 #ifdef USE_DEEP_SLEEP
 #define WAKE_PIN 4                            // A2, pin must be RTC GPIO.
 const int deep_sleep_after = (3 * 60 * 1000); // 3 mins.
@@ -51,44 +50,58 @@ void print_wakeup_reason() {
 #endif
 
 // Start SPI at 250kHz.
+// https://docs.arduino.cc/learn/communication/spi/
 SPISettings psx(250000, LSBFIRST, SPI_MODE3);
 // Start BLE and signal 100% battery.
+// https://github.com/lemmingDev/ESP32-BLE-Gamepad
 BleGamepad bleGamepad("PSX BLT", "dskel", 100);
 const char *CLEAR_SCREEN_ANSI = "\e[1;1H\e[2J";
 #ifdef USE_LED
 Adafruit_NeoPixel pixel(1, 0, NEO_GRB + NEO_KHZ800);
 #endif
-// Button states.
+// We keep track of 16 buttons, so we can map them from their position in the
+// SPI 2-byte report to the HID gamepad buttons.
+#define numButtons 16
 bool previousButtonStates[numButtons];
 bool currentButtonStates[numButtons];
-// PSX D-pad bit number.
-#define PSX_LEFT 15
-#define PSX_DOWN 14
-#define PSX_RIGHT 13
-#define PSX_UP 12
-#define PSX_START 11
+int previousDpadState = DPAD_CENTERED;
+// PSX button bit number (2 bytes received MSB first).
+#define PSX_L2 0
+#define PSX_R2 1
+#define PSX_L1 2
+#define PSX_R1 3
+#define PSX_Y 4
+#define PSX_B 5
+#define PSX_A 6
+#define PSX_X 7
 #define PSX_SELECT 8
-// Map from PSX button state bits to standard OS interpretation of HID
-// Gamepad button report.
-// Bit number:            15 14 13 12 11 10 9  8  7  6  5  4  3  2  1  0
-// From controller (MSB): L  D  R  U  St R3 L3 Se □  X  O  △  R1 L1 R2 L2
-// Trial and error to find the right button map, use https://gamepadtester.net.
-const byte buttonMap[numButtons] = {7,   // 0 L2
-                                    8,   // 1 R2
-                                    5,   // 2 L1
-                                    6,   // 3 R1
-                                    4,   // 4 △
-                                    2,   // 5 O
-                                    1,   // 6 X
-                                    3,   // 7 □
-                                    9,   // 8 Se
-                                    9,   // 9 L3
-                                    10,  // 10 R3
-                                    10,  // 11 St
-                                    13,  // 12 U
-                                    16,  // 13 R
-                                    14,  // 14 D
-                                    15}; // 15 L
+#define PSX_L3 9
+#define PSX_R3 10
+#define PSX_START 11
+#define PSX_UP 12
+#define PSX_RIGHT 13
+#define PSX_DOWN 14
+#define PSX_LEFT 15
+// Try to get a decent default mapping; values here should be below 10.
+const byte buttonMap[numButtons] = {
+    // Counting is 1-16.
+    1,  // 0 L2
+    2,  // 1 R2
+    3,  // 2 L1
+    4,  // 3 R1
+    5,  // 4 Y
+    6,  // 5 B
+    7,  // 6 A
+    8,  // 7 X
+    9,  // 8 Select
+    10, // 9 L3
+    11, // 10 R3
+    12, // 11 Start
+    13, // 12 Up
+    14, // 13 Right
+    15, // 14 Down
+    16, // 15 Left
+};
 
 #define SPECIAL_SEQUENCE_TIMEOUT (3 * 1000) // 3 seconds
 unsigned long bond_delete_start = 0;
@@ -122,13 +135,22 @@ void setup() {
     // Initialize BLE.
     Serial.println("Starting BLE work!");
     BleGamepadConfiguration bleGamepadConfig;
-    // Add start and select as special buttons (depends on device).
+    bleGamepadConfig.setControllerType(CONTROLLER_TYPE_GAMEPAD); // Default.
+    // This setting is default, but essential for the controller to be recognized by
+    // https://hardwaretester.com/gamepad or
+    // https://gamepadtester.net
+    // bleGamepadConfig.setWhichAxes(true, true, true, true, true, true, true, true);
+    // This is default, but also essential.
+    // bleGamepadConfig.setHatSwitchCount(4); // Default, the D-pad.
+    // Not default, but also essential.
+    // TODO: Default, but necessary?
+    // bleGamepadConfig.setButtonCount(16);
     bleGamepadConfig.setIncludeStart(true);
     bleGamepadConfig.setIncludeSelect(true);
-    // Disable axes.
-    bleGamepadConfig.setWhichAxes(false, false, false, false, false, false,
-                                  false, false);
     bleGamepad.begin(&bleGamepadConfig);
+    // Set the axes to the center of the range?
+    // const int16_t center = 2 << 15 / 2;
+    // bleGamepad.setAxes(center, center, center, center, center, center, center, center);
     delay(100);
 
 #ifdef USE_LED
@@ -169,7 +191,7 @@ uint16_t poll_pad() {
     return ~(rx[3] << 8 | rx[4]); // Convert to active-high.
 }
 
-void handle_dpad(uint16_t rx) {
+void handle_dpad(uint16_t rx, bool &changed) {
     uint8_t dpadState = DPAD_CENTERED;
     if (rx & (1 << PSX_UP)) {
         if (rx & (1 << PSX_RIGHT)) {
@@ -193,30 +215,34 @@ void handle_dpad(uint16_t rx) {
         dpadState = DPAD_LEFT;
     }
     bleGamepad.setHat(dpadState);
+    changed = dpadState != previousDpadState;
+    previousDpadState = dpadState;
 }
 
 void handle_buttons(uint16_t rx, bool &changed) {
     bool select_pressed = rx & (1 << PSX_SELECT);
     bool start_pressed = rx & (1 << PSX_START);
-    bool l1_pressed = rx & (1 << 2); // L1 is button 2
-    bool r1_pressed = rx & (1 << 3); // R1 is button 3
-    bool l2_pressed = rx & (1 << 1); // L2 is button 1
-    bool r2_pressed = rx & (1 << 0); // R2 is button 0
+    bool l1_pressed = rx & (1 << PSX_L1);
+    bool r1_pressed = rx & (1 << PSX_R1);
+    bool l2_pressed = rx & (1 << PSX_L2);
+    bool r2_pressed = rx & (1 << PSX_R2);
 
-    // Check for Bluetooth bond delete sequence (SELECT + START + L1 + R1).
-    if (select_pressed && start_pressed && l1_pressed && r1_pressed) {
-        if (!bond_delete_sequence) {
-            bond_delete_sequence = true;
-            bond_delete_start = millis();
-        } else if (millis() - bond_delete_start > SPECIAL_SEQUENCE_TIMEOUT) {
-            Serial.println("Entering pairing mode!");
-            bleGamepad.enterPairingMode();
-            bond_delete_sequence = false;
-            return; // Skip normal button handling.
-        }
-    } else {
-        bond_delete_sequence = false;
-    }
+    // TODO: Re-enable this.
+    // // Check for Bluetooth bond delete sequence (SELECT + START + L1 + R1).
+    // if (select_pressed && start_pressed && l1_pressed && r1_pressed) {
+    //     if (!bond_delete_sequence) {
+    //         bond_delete_sequence = true;
+    //         bond_delete_start = millis();
+    //     } else if (millis() - bond_delete_start > SPECIAL_SEQUENCE_TIMEOUT) {
+    //         Serial.println("Entering pairing mode!");
+    //         bleGamepad.deleteBond();
+    //         bleGamepad.enterPairingMode();
+    //         bond_delete_sequence = false;
+    //         return; // Skip normal button handling.
+    //     }
+    // } else {
+    //     bond_delete_sequence = false;
+    // }
 
     // Check for restart sequence (SELECT + START + L2 + R2).
     if (select_pressed && start_pressed && l2_pressed && r2_pressed) {
@@ -233,6 +259,11 @@ void handle_buttons(uint16_t rx, bool &changed) {
 
     // Normal button handling.
     for (uint8_t i = 0; i < numButtons; i++) {
+        // TODO: In theory the hat should handle these, but I'm no having luck
+        // with it.
+        // if (i >= PSX_UP && i <= PSX_LEFT) {
+        //     continue;
+        // }
         currentButtonStates[i] = rx & (1 << i);
         if (currentButtonStates[i] != previousButtonStates[i]) {
 #ifdef USE_DEEP_SLEEP
@@ -241,19 +272,19 @@ void handle_buttons(uint16_t rx, bool &changed) {
             changed = true;
 
             if (currentButtonStates[i] == LOW) {
-                bleGamepad.release(buttonMap[i]);
                 if (i == PSX_START) {
                     bleGamepad.releaseStart();
                 } else if (i == PSX_SELECT) {
                     bleGamepad.releaseSelect();
                 }
+                bleGamepad.release(buttonMap[i]);
             } else {
-                bleGamepad.press(buttonMap[i]);
                 if (i == PSX_START) {
                     bleGamepad.pressStart();
                 } else if (i == PSX_SELECT) {
                     bleGamepad.pressSelect();
                 }
+                bleGamepad.press(buttonMap[i]);
             }
         }
     }
@@ -270,7 +301,7 @@ void loop() {
 #endif
 
         rx = poll_pad();
-        handle_dpad(rx);
+        handle_dpad(rx, changed);
         handle_buttons(rx, changed);
 
         if (changed) {
@@ -288,13 +319,6 @@ void loop() {
                 previousButtonStates[j] = currentButtonStates[j];
             }
         }
-#ifdef USE_DEEP_SLEEP
-        if (millis() - last_button_press > deep_sleep_after) {
-            Serial.println("Entering deep sleep...");
-            delay(300);
-            esp_deep_sleep_start();
-        }
-#endif
     } else {
 #ifdef USE_LED
         // Flash LED to indicate disconnected.
@@ -308,7 +332,15 @@ void loop() {
         }
 #endif
     }
+#ifdef USE_DEEP_SLEEP
+    if (millis() - last_button_press > deep_sleep_after) {
+        Serial.println("Entering deep sleep...");
+        delay(300);
+        esp_deep_sleep_start();
+    }
+#endif
 #ifdef WIFI_UPDATES
     server.handleClient();
 #endif
+    delay(5); // ~200 Hz poll
 }

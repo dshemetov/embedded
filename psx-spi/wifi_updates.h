@@ -57,10 +57,10 @@ void handleUpdateEnd() {
 void wifiInit() {
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
-    // Wait for connection for 20 seconds, then move on
+    // Wait for connection for 5 seconds, then move on.
     unsigned long startTime = millis(); // Get the current time
     while (!(WiFi.status() == WL_CONNECTED) &&
-           ((millis() - startTime) < 2000)) {
+           ((millis() - startTime) < 5000)) {
         delay(500);
         Serial.print(".");
     }
