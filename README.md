@@ -2,9 +2,9 @@
 
 ## PSX Bluetooth Controller
 
-Arduino code for a PSX controller that uses the SPI interface to communicate
-with the PSX console. The ESP32 runs in device-mode, reads PSX controller
-signals over SPI, and communicates with hosts over BLE (Bluetooth).
+ESP32 Arduino code for a Bluetooth-enabled PSX controller. The Arduino runs in
+device-mode, reads PSX controller signals over SPI, and communicates with hosts
+over BLE (Bluetooth).
 
 See the [PSX-SPI](psx-spi) directory for the code.
 
@@ -12,51 +12,35 @@ See the [PSX-SPI](psx-spi) directory for the code.
 
 - [x] LED shows connected / disconnected mode (NeoPixel)
 - [x] OTA WiFi Updates (via ESP32 Arduino library)
-- [x] Deep Sleep (ESP32 draws 10mA in deep sleep), press R1 to wake.
+- [x] Deep Sleep (ESP32 draws 10mA in deep sleep), press R1 to wake
 - [x] Bluetooth bond delete sequence (SELECT + START + L1 + R1)
 - [x] Bluetooth restart sequence (SELECT + START + L2 + R2)
-- [x] Steam Link support (via Big Picture > Steam Input)
-- [ ] Latency tested on [Celeste](https://www.celestegame.com)!
+- [x] Tested on Windows with Steam and [Celeste](https://www.celestegame.com)!
+- [ ] Tested on MacOS with Steam and [Celeste](https://www.celestegame.com)
+- [ ] Steam Link support (via Big Picture > Steam Input)
 - [ ] Expose charge LED?
 
-### Current Status
+### Challenges
 
-The controller connects properly but games don't recognize button mappings
-correctly. These two sites correctly find the controller:
-- https://gamepadtester.net/
-- https://hardwaretester.com/gamepad
-
-All the buttons work (not mapped right), but the directional buttons don't.
-
-Some useful commands for debugging with MacOS:
-
-```sh
-# Shows the controller in the list of connected devices
-system_profiler SPBluetoothDataType
-# You can find it here too.
-hidutil list
-# The HID descriptor can be dumped with.
-ioreg -l | grep -A 50 -B 5 "PSX BLT" > hid_descriptor.txt
-```
-
-Further findings:
-
-- The BleGamepad defaults appear to be correct, minus the start/select buttons
-  being necessary for the gamepad tester to work
-- MacOS: Steam still doesn't detect button presses despite what appears to be a
-  clean HID descriptor and gamepad tester working.
-- Windows: Bluetooth connection unpairs immediately.
-- Phone: Bluetooth connection unpairs immediately.
-
-Next Steps:
-
-1. Upgrading NimBLE to 2.2.3 -> 2.3.2.
-1. Compare with known working controller - Capture HID reports from a working
-   Xbox/PS4 controller to see the exact format Steam expects
-2. Test with other games/apps - Try non-Steam games to isolate whether it's a
-   Steam-specific issue
-3. Monitor actual HID reports - Use tools to capture the raw HID data being sent
-   during button presses
+- Soldering connections of more than 2 wires to an Arduino pin is a pain. I
+  ended up twisting very thin wires together and threading them through.
+- A lead burnt off the PSX controller, so I had to follow the trace to a
+  resistor and connect there. This almost didn't work, I used tape to hold the
+  wire in place.
+- The controller also has a very small form factor, so fitting everything inside
+  required shortening the wire lengths and spreading the components out.
+- Figuring out which pins needed pullups was the first block to getting SPI
+  working. I manually added resistors until I learned the Arduino has built-in
+  pullups, so you can just set those to activate in the code.
+- After that, I needed to add small delays between MOSI and MISO to get the
+  controller to respond.
+- Setting up OTA updates was surprisingly easy. It's still so funny to me that
+  my controller has a small web server running on it.
+- Adding Bluetooth support was surprisingly easy. Getting it functional and
+  getting the button mappings right was the hardest part of the project.
+  Bluetooth attribute caching can make it difficult to iterate on controller
+  configuration. Steam appears to have some caching as well an needs to be
+  restarted whenever you make changes to the controller settings.
 
 ### PSX Controller and Arduino Pinout
 
@@ -82,6 +66,17 @@ Standard PSX controller pinout, my Arduino pin pairing, and color codings.
   - EXT1 allows up to 8 wake-up pins, can be triggered by any-high or all-low.
     Going with EXT0 here, for EXT1 see
     [ExternalWakeUp.ino](https://github.com/espressif/arduino-esp32/blob/master/libraries/ESP32/examples/DeepSleep/ExternalWakeUp/ExternalWakeUp.ino)
+
+Some useful commands for debugging with MacOS:
+
+```sh
+# Shows the controller in the list of connected devices
+system_profiler SPBluetoothDataType
+# You can find it here too.
+hidutil list
+# The HID descriptor can be dumped with.
+ioreg -l | grep -A 50 -B 5 "PSX BLT" > hid_descriptor.txt
+```
 
 ### References
 

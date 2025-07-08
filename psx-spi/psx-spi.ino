@@ -135,22 +135,12 @@ void setup() {
     // Initialize BLE.
     Serial.println("Starting BLE work!");
     BleGamepadConfiguration bleGamepadConfig;
-    bleGamepadConfig.setControllerType(CONTROLLER_TYPE_GAMEPAD); // Default.
-    // This setting is default, but essential for the controller to be recognized by
+    // Necessary for the controller to be recognized by
     // https://hardwaretester.com/gamepad or
-    // https://gamepadtester.net
-    // bleGamepadConfig.setWhichAxes(true, true, true, true, true, true, true, true);
-    // This is default, but also essential.
-    // bleGamepadConfig.setHatSwitchCount(4); // Default, the D-pad.
-    // Not default, but also essential.
-    // TODO: Default, but necessary?
-    // bleGamepadConfig.setButtonCount(16);
+    // https://gamepadtester.net.
     bleGamepadConfig.setIncludeStart(true);
     bleGamepadConfig.setIncludeSelect(true);
     bleGamepad.begin(&bleGamepadConfig);
-    // Set the axes to the center of the range?
-    // const int16_t center = 2 << 15 / 2;
-    // bleGamepad.setAxes(center, center, center, center, center, center, center, center);
     delay(100);
 
 #ifdef USE_LED
@@ -227,7 +217,7 @@ void handle_buttons(uint16_t rx, bool &changed) {
     bool l2_pressed = rx & (1 << PSX_L2);
     bool r2_pressed = rx & (1 << PSX_R2);
 
-    // TODO: Re-enable this.
+    // TODO: Re-enable this?
     // // Check for Bluetooth bond delete sequence (SELECT + START + L1 + R1).
     // if (select_pressed && start_pressed && l1_pressed && r1_pressed) {
     //     if (!bond_delete_sequence) {
@@ -259,11 +249,10 @@ void handle_buttons(uint16_t rx, bool &changed) {
 
     // Normal button handling.
     for (uint8_t i = 0; i < numButtons; i++) {
-        // TODO: In theory the hat should handle these, but I'm no having luck
-        // with it.
-        // if (i >= PSX_UP && i <= PSX_LEFT) {
-        //     continue;
-        // }
+        // Skip D-pad buttons.
+        if (i >= PSX_UP && i <= PSX_LEFT) {
+            continue;
+        }
         currentButtonStates[i] = rx & (1 << i);
         if (currentButtonStates[i] != previousButtonStates[i]) {
 #ifdef USE_DEEP_SLEEP
@@ -342,5 +331,5 @@ void loop() {
 #ifdef WIFI_UPDATES
     server.handleClient();
 #endif
-    delay(5); // ~200 Hz poll
+    delay(2); // ~500 Hz poll
 }
