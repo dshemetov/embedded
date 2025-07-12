@@ -82,13 +82,30 @@ ioreg -l | grep -A 50 -B 5 "PSX BLT" > hid_descriptor.txt
 
 These references were helpful in building this project.
 
+- [Adafruit PSX Controller](https://learn.adafruit.com/esp32-playstation-controller/overview)
+  - This guide gave me the initial idea for the project. It uses bit-banging to
+    read the buttons, which I switched to SPI.
 - [PSX SPI](https://hackaday.io/project/170365-blueretro/log/186471-playstation-playstation-2-spi-interface)
+  - The notes here are really helpful for understanding the PS1 controller SPI
+    interface.
 - [PSX Arduino Library](https://github.com/SukkoPera/PsxNewLib?tab=readme-ov-file)
+  - Was useful to get a sense of the SPI timing.
 - [ESP32 Pinouts](https://learn.adafruit.com/adafruit-itsybitsy-esp32/pinouts)
+  - Of course, you'll need to know the ESP32 pinout to use it.
 - [Arduino SPI](https://docs.arduino.cc/language/reference/en/functions/communication/SPI/)
+  - The Arduino SPI interface is pretty straightforward. Hooray for simple
+    protocols!
 - [ESP32 BLE Gamepad](https://github.com/lemmingDev/ESP32-BLE-Gamepad)
+  - The main workhorse for the Bluetooth code. It mostly works out of the box,
+    which was a nice surprise. The main difficulty was getting the OS to
+    recognize and map the buttons correctly, so I ended up handling that at the
+    software level (with Steam).
 - [Adafruit NeoPixel](https://github.com/adafruit/Adafruit_NeoPixel)
-- [HID Reports](https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf) (not very useful)
+  - I used the NeoPixel to show the connected / disconnected mode.
+- [HID Reports](https://www.usb.org/sites/default/files/documents/hut1_12v2.pdf)
+  - Wasn't useful to me, since the BLE Gamepad library generates the HID
+    descriptor and the reports, but a good reference to understand the HID
+    protocol.
 
 ## EEPROM Writer
 
