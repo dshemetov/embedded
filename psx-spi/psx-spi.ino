@@ -11,6 +11,10 @@
 
 #ifdef WIFI_UPDATES
 #include "wifi_updates.h"
+bool wifi_ota_enabled = false;
+bool wifi_antenna_enabled = false;
+unsigned long last_bt_check = 0;
+const unsigned long BT_CHECK_INTERVAL = 5000; // Check every 5 seconds
 #endif
 
 // A0 is tied to ACK, but I don't actually poll it.
@@ -149,9 +153,12 @@ void setup() {
 #endif
 
 #ifdef WIFI_UPDATES
-    wifiInit();
-    webServerInit();
-    delay(1000);
+    // WiFi OTA will be enabled only when Bluetooth is not connected
+    // WiFi antenna is disabled when Bluetooth is connected for power saving
+    // Initialize WiFi but don't start it yet
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_wifi_init(&cfg);
+    wifi_antenna_enabled = false;
 #endif
 }
 
@@ -329,7 +336,39 @@ void loop() {
     }
 #endif
 #ifdef WIFI_UPDATES
-    server.handleClient();
+    // Check Bluetooth connection status periodically to manage WiFi OTA
+    if (millis() - last_bt_check > BT_CHECK_INTERVAL) {
+        last_bt_check = millis();
+
+        if (!bleGamepad.isConnected() && !wifi_ota_enabled) {
+            // Bluetooth not connected and WiFi OTA not enabled - start WiFi OTA
+            Serial.println("Bluetooth disconnected, enabling WiFi antenna and OTA...");
+            if (!wifi_antenna_enabled) {
+                esp_wifi_start();
+                wifi_antenna_enabled = true;
+            }
+            wifiInit();
+            webServerInit();
+            wifi_ota_enabled = true;
+        } else if (bleGamepad.isConnected() && (wifi_ota_enabled || wifi_antenna_enabled)) {
+            // Bluetooth connected - stop WiFi OTA and disable antenna
+            Serial.println("Bluetooth connected, disabling WiFi OTA and antenna...");
+            if (wifi_ota_enabled) {
+                server.stop();
+                WiFi.disconnect(true);
+                wifi_ota_enabled = false;
+            }
+            if (wifi_antenna_enabled) {
+                esp_wifi_stop();
+                wifi_antenna_enabled = false;
+            }
+        }
+    }
+
+    // Handle web server requests only if WiFi OTA is enabled
+    if (wifi_ota_enabled) {
+        server.handleClient();
+    }
 #endif
     delay(2); // ~500 Hz poll
 }
