@@ -15,10 +15,8 @@ See the [PSX-SPI](psx-spi) directory for the code.
 - [x] Deep Sleep (ESP32 draws 10mA in deep sleep), press R1 to wake
 - [x] Bluetooth bond delete sequence (SELECT + START + L1 + R1)
 - [x] Bluetooth restart sequence (SELECT + START + L2 + R2)
-- [x] Tested on Windows with Steam and [Celeste](https://www.celestegame.com)!
-- [ ] Tested on MacOS with Steam and [Celeste](https://www.celestegame.com)
-- [ ] Steam Link support (via Big Picture > Steam Input)
-- [ ] Expose charge LED?
+- [x] Tested on Windows with Steam and [Celeste](https://www.celestegame.com)
+  (Farewell screens!)
 
 ### Challenges
 
@@ -41,6 +39,13 @@ See the [PSX-SPI](psx-spi) directory for the code.
   Bluetooth attribute caching can make it difficult to iterate on controller
   configuration. Steam appears to have some caching as well an needs to be
   restarted whenever you make changes to the controller settings.
+- I learned that 350mAh gives about an hour of use (without aggressive power
+  saving). Turning off the WiFi OTA and disabling the NeoPixel LED saves a lot
+  of power.
+- When the battery gets low, I experienced spurious inputs from the controller
+  due to voltage sag.
+- On MacOS, there is plenty of latency using Steam, so I recommend using Windows
+  for the best experience.
 
 ### PSX Controller and Arduino Pinout
 
