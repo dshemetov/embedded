@@ -16,7 +16,7 @@ See the [PSX-SPI](psx-spi) directory for the code.
 - [x] Bluetooth bond delete sequence (SELECT + START + L1 + R1)
 - [x] Bluetooth restart sequence (SELECT + START + L2 + R2)
 - [x] Tested on Windows with Steam and [Celeste](https://www.celestegame.com)
-  (Farewell screens!)
+      (even some Farewell screens!) See [here](https://imgur.com/a/Pt0OeQK) for a short video.
 
 ### Challenges
 
@@ -114,5 +114,40 @@ These references were helpful in building this project.
 
 ## EEPROM Writer
 
-Arduino microcontroller code for a device that writes to an EEPROM. See the
-[eeprom-writer](eeprom-writer) directory for the code.
+Arduino microcontroller code for a device that writes to an EEPROM.
+I used it to program an EEPROM that I later connected to a Game Boy.
+See the [eeprom-writer](eeprom-writer) directory for the code.
+
+### Usage
+
+### Notes
+
+- The EEPROM is SST39SF020A, see datasheet [here](https://www.mouser.com/datasheet/3/282/1/20005022C.pdf).
+- You can see a picture of my breadboard setup here.
+- I verified the basic functionality with eeprom_writer, which writes hard-coded patterns to the EEPROM and reads them back.
+- Writing ROMs uses eeprom_writer2, which listens for a file over serial and writes it to the EEPROM. I designed a simple protocol, described below.
+- A Python script is provided to read a file, break it into 1kB pages, and send it to the device over serial.
+
+#### Protocol
+
+Simple protocol that writes a file to the EEPROM.
+
+```
+[SOF=0xAA 0x55] [CMD:1] [ADDR:4 LE] [LEN:2 LE] [DATA:LEN] [CKSUM16:2 LE]
+```
+
+Host -> device:
+
+- SOF: Start of frame
+- CMD: Command (W 0x57: write, R 0x52: read)
+- ADDR: Address (4 bytes, little endian)
+- LEN: Length (2 bytes, little endian)
+- DATA: Data (LEN bytes)
+- CKSUM16: Checksum (2 bytes, little endian), 16-bit sum of all bytes modulo 0x10000
+
+Device -> host:
+
+- For W: `[0xAA, 0x55] ['A'] [STATUS:1] [CKSUM16]` where STATUS is 0x00 for success, 0x01 for error.
+- For R: `[0xAA, 0x55] ['D'] [DATA:LEN] [CKSUM16]`
+
+### References

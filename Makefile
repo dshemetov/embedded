@@ -1,9 +1,9 @@
-.PHONY: sync compile upload monitor
-DEVICE=/dev/cu.usbserial-59190089461
+DEVICE=$(shell arduino-cli board list | grep -e "^.*usbserial[^\s]*" -o)
 BOARD=esp32:esp32:adafruit_itsybitsy_esp32
 UPLOAD_BAUDRATE=460800
 SERIAL_BAUDRATE=115200
-PROJECT=psx-spi
+# PROJECT=psx-spi
+PROJECT=eeprom_writer2
 # empty or -v
 VERBOSE=
 
@@ -16,5 +16,8 @@ upload:
 monitor:
 	arduino-cli monitor -p $(DEVICE) -c baudrate=$(SERIAL_BAUDRATE) --fqbn $(BOARD)
 
-sync:
-	rsync -avzP --exclude="target" SteakWSL:/home/dskel/repos/embedded/ ~/Documents/Code/embedded/ >> sync-embedded.log 2>&1
+send-serial:
+	uv run eeprom_writer2/send_serial.py $(DEVICE)
+
+send-serial-tetris:
+	uv run eeprom_writer2/send_serial.py $(DEVICE) "tetris.gb"
